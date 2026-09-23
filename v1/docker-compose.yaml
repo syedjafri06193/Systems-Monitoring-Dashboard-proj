@@ -1,0 +1,15 @@
+# Local development.
+#
+# The load generator is a first-class component, not an afterthought: you
+# cannot develop this project meaningfully against three hand-typed metrics.
+# A thousand realistic series with seasonality, noise and injectable
+# anomalies is what every milestone is tested against.
+services:
+  gateway:
+    build: .
+    command: ["-addr", ":8080", "-loadgen", "-series", "1000", "-hz", "5"]
+    ports: ["8080:8080"]
+
+  # A real deployment adds ClickHouse for tiers 1-3 and NATS as the
+  # multi-node pub/sub backplane. Neither is needed to run the streaming
+  # path, which is where the interesting engineering is.

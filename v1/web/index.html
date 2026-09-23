@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Systems Monitoring Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.31/dist/uPlot.min.css" />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: #0e1013;
+        color: #d6d9de;
+        font: 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 10px 16px;
+        border-bottom: 1px solid #23262c;
+      }
+      h1 { margin: 0; font-size: 14px; font-weight: 600; }
+      #stats { font: 11px/1 ui-monospace, Menlo, monospace; color: #8b919b; }
+      #chart { height: calc(100vh - 46px); padding: 12px; }
+      .u-legend { font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Live tail</h1>
+      <span id="stats">connecting…</span>
+    </header>
+    <div id="chart"></div>
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>

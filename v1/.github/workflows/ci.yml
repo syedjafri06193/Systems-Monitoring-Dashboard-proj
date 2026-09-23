@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: v1/go.sum
+
+      - name: Vet
+        run: go vet ./...
+        working-directory: v1
+
+      - name: Test
+        run: go test ./... -race
+        working-directory: v1
+
+      - name: Fuzz the wire codec
+        # Bit-level codecs fail in ways unit tests miss, and the decoder
+        # parses untrusted network input.
+        run: |
+          go test ./internal/wire/ -run=XXX -fuzz FuzzRoundTrip -fuzztime 30s
+          go test ./internal/wire/ -run=XXX -fuzz FuzzDecoderDoesNotPanic -fuzztime 30s
+        working-directory: v1
+
+      - name: Build
+        run: go build ./...
+        working-directory: v1
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: v1/web/package-lock.json
+
+      - name: Regenerate the wire fixtures
+        # The Go and TypeScript implementations must agree byte for byte.
+        # Regenerating here means a change to either side that breaks the
+        # other fails CI rather than drifting silently.
+        run: go run ./cmd/genfixtures > web/tests/wire-fixtures.json
+        working-directory: v1
+
+      - name: Check the fixtures are current
+        run: git diff --exit-code web/tests/wire-fixtures.json
+        working-directory: v1
+
+      - run: npm ci
+        working-directory: v1/web
+      - run: npm run typecheck
+        working-directory: v1/web
+      - run: npm test
+        working-directory: v1/web
+      - run: npm run build
+        working-directory: v1/web
