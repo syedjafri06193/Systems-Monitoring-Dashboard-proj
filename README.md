@@ -1,32 +1,54 @@
-# Systems-Monitoring-Dashboard-proj
+# Systems Monitoring Dashboard
 
-Real-time infra dashboard with sub-second latency, WebSocket streaming, time-series aggregation, and anomaly alerts.
+A real-time infrastructure dashboard with sub-second end-to-end latency:
+push-based metric collection, a compact binary wire format over WebSocket,
+a tiered time-series store, robust-statistics anomaly detection, and
+hysteresis-based alerting.
 
-### Feedback
-v1:
+[![CI](https://github.com/syedjafri06193/Systems-Monitoring-Dashboard-proj/actions/workflows/ci.yml/badge.svg)](https://github.com/syedjafri06193/Systems-Monitoring-Dashboard-proj/actions/workflows/ci.yml)
 
-v2:
+## Highlights
 
-v3:
+- **P99 under 400 ms** from collection to pixel, with the latency budget computed and asserted in tests
+- **Binary wire codec** shared by Go and TypeScript, kept in lockstep by generated fixtures and fuzzing
+- **Hand-written RFC 6455 WebSocket server** with frame-size limits, mask enforcement and same-origin checks
+- **Anomaly detection** using robust statistics, with alert hysteresis to avoid flapping
+- **Cardinality limits** so one bad label can't exhaust memory
 
-v4:
+## Quick start
 
-v5:
+Requires Go 1.24+ and Node 22+.
 
-v6:
+```bash
+cd v1
+go test -race ./...
+go run ./cmd/gateway -loadgen -series 1000 -hz 5
 
-v7:
+# in another terminal
+cd v1/web && npm ci && npm run dev    # open http://localhost:5173
+```
 
-v8:
+More detail in [`v1/README.md`](v1/README.md).
 
-v9:
+## Repository layout
 
-v10:
+```
+.
+├── 1—Documentation/   all documentation (start with its README index)
+└── v1/
+    ├── cmd/           gateway, agent, detector, loadgen, genfixtures
+    ├── internal/      wire, ws, hub, ring, store, detect, alert, latency, cardinality
+    └── web/           TypeScript + uPlot front end (Vite, Vitest)
+```
 
-v11:
+## Documentation
 
-v12:
+All documentation lives in [`1—Documentation/`](1—Documentation/README.md).
 
-v13:
+## Versions and feedback
 
-v14: 
+| Version | Summary | Feedback |
+|---|---|---|
+| [v1](v1/) | Push collection, binary WebSocket stream, tiered store, anomaly detection and alerting | — |
+
+Add a row per version as new iterations land.

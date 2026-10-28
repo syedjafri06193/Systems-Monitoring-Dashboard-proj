@@ -18,6 +18,11 @@ cd web && npm install && npm test && npm run dev
 
 Then open http://localhost:5173.
 
+`/stream` refuses cross-origin browser connections, so a page on another
+site cannot read your metrics through a visitor's browser. If the dashboard
+is served from a different origin than the gateway, allow it explicitly:
+`-allowed-origins https://dash.example.com`.
+
 ## The argument, in one table
 
 | collection model | end-to-end P50 | P99 |
@@ -194,7 +199,7 @@ Several tests exist specifically to document a surprise:
 ## Notes on the design document
 
 Ten places where building this disagreed with the spec are recorded in
-[`docs/notes-on-the-spec.md`](docs/notes-on-the-spec.md), with measurements.
+[`../1—Documentation/v1/notes-on-the-spec.md`](../1—Documentation/v1/notes-on-the-spec.md), with measurements.
 The three that matter most:
 
 - **The Gorilla encoder in §15.1 corrupts data.** It calls `zigzag()` but
