@@ -20,6 +20,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,8 @@ var (
 	ErrBadCloseCode   = errors.New("ws: invalid close code")
 	ErrControlTooLong = errors.New("ws: control frame payload exceeds 125 bytes")
 	ErrFragmentedCtrl = errors.New("ws: control frames may not be fragmented")
+	ErrBadOrigin      = errors.New("ws: cross-origin upgrade refused")
+	ErrBadFragment    = errors.New("ws: invalid fragmentation sequence")
 )
 
 // Accept computes the Sec-WebSocket-Accept response header.
@@ -116,10 +119,44 @@ type Conn struct {
 	closed    chan struct{}
 }
 
-// Upgrade performs the handshake and hijacks the connection.
+// CheckOrigin reports whether a browser-initiated upgrade may proceed.
+//
+// Browsers do not apply the same-origin policy to WebSockets: any page the
+// user visits can open a socket to this server and read the stream
+// (cross-site WebSocket hijacking). A request with no Origin header is not
+// from a browser and is allowed; otherwise the Origin's host must match the
+// request's Host or appear in allowed (scheme://host[:port], or "*" for any).
+func CheckOrigin(r *http.Request, allowed []string) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	for _, a := range allowed {
+		if a == "*" || strings.EqualFold(strings.TrimRight(a, "/"), origin) {
+			return true
+		}
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
+}
+
+// Upgrade performs the handshake and hijacks the connection. Cross-origin
+// browser requests are refused; use UpgradeWithOrigins to allow others.
 func Upgrade(w http.ResponseWriter, r *http.Request) (*Conn, error) {
+	return UpgradeWithOrigins(w, r, nil)
+}
+
+// UpgradeWithOrigins is Upgrade with an explicit list of extra allowed
+// origins (see CheckOrigin).
+func UpgradeWithOrigins(w http.ResponseWriter, r *http.Request, allowed []string) (*Conn, error) {
 	if !IsUpgrade(r) {
 		return nil, ErrNotWebSocket
+	}
+	if !CheckOrigin(r, allowed) {
+		return nil, ErrBadOrigin
 	}
 	key := r.Header.Get("Sec-WebSocket-Key")
 	if key == "" {
@@ -172,6 +209,7 @@ type Message struct {
 func (c *Conn) Read() (Message, error) {
 	var fragments []byte
 	var fragOp Opcode
+	inMessage := false
 	total := 0
 
 	for {
@@ -203,12 +241,24 @@ func (c *Conn) Read() (Message, error) {
 			return Message{}, ErrMessageTooBig
 		}
 
-		if f.opcode != OpContinuation {
+		// RFC 6455 5.4: a continuation frame must follow an unfinished data
+		// frame, and a new data frame must not start until the previous
+		// message has finished.
+		if f.opcode == OpContinuation {
+			if !inMessage {
+				_ = c.WriteClose(CloseProtocolError, "unexpected continuation")
+				return Message{}, ErrBadFragment
+			}
+			fragments = append(fragments, f.payload...)
+		} else {
+			if inMessage {
+				_ = c.WriteClose(CloseProtocolError, "expected continuation")
+				return Message{}, ErrBadFragment
+			}
 			fragOp = f.opcode
 			fragments = append(fragments[:0], f.payload...)
-		} else {
-			fragments = append(fragments, f.payload...)
 		}
+		inMessage = !f.fin
 
 		if f.fin {
 			return Message{Opcode: fragOp, Data: fragments}, nil

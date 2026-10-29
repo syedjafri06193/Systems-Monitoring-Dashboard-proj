@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,6 +41,7 @@ func main() {
 		hz         = flag.Float64("hz", 5, "loadgen collection frequency")
 		webDir     = flag.String("web", "web/dist", "directory of static assets to serve")
 		verbose    = flag.Bool("v", false, "debug logging")
+		origins    = flag.String("allowed-origins", "", "comma-separated extra origins allowed to open /stream (same-origin is always allowed; \"*\" allows any)")
 	)
 	flag.Parse()
 
@@ -65,13 +67,24 @@ func main() {
 	opts.Logger = logger
 	h := hub.New(r, registry, opts)
 
+	var allowedOrigins []string
+	for _, o := range strings.Split(*origins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins = append(allowedOrigins, o)
+		}
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/stream", func(w http.ResponseWriter, req *http.Request) {
-		c, err := ws.Upgrade(w, req)
+		c, err := ws.UpgradeWithOrigins(w, req, allowedOrigins)
 		if err != nil {
 			logger.Warn("upgrade failed", "err", err, "remote", req.RemoteAddr)
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			status := http.StatusBadRequest
+			if errors.Is(err, ws.ErrBadOrigin) {
+				status = http.StatusForbidden
+			}
+			http.Error(w, err.Error(), status)
 			return
 		}
 		logger.Debug("client connected", "remote", c.RemoteAddr())

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -511,5 +512,72 @@ func TestUpgradeRejectsWrongVersion(t *testing.T) {
 	r.Header.Set("Sec-WebSocket-Version", "8")
 	if _, err := Upgrade(w, r); err == nil {
 		t.Fatal("accepted version 8")
+	}
+}
+
+func TestUnexpectedContinuationIsRejected(t *testing.T) {
+	errCh := make(chan error, 1)
+	raw, cleanup := serve(t, func(c *Conn) {
+		_, err := c.Read()
+		errCh <- err
+	})
+	defer cleanup()
+
+	WriteClientFrame(raw, OpContinuation, []byte("orphan"), true)
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrBadFragment) {
+			t.Fatalf("err = %v, want ErrBadFragment", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out")
+	}
+}
+
+func TestNewDataFrameMidMessageIsRejected(t *testing.T) {
+	errCh := make(chan error, 1)
+	raw, cleanup := serve(t, func(c *Conn) {
+		_, err := c.Read()
+		errCh <- err
+	})
+	defer cleanup()
+
+	WriteClientFrame(raw, OpBinary, []byte("ab"), false)
+	WriteClientFrame(raw, OpText, []byte("cd"), true)
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrBadFragment) {
+			t.Fatalf("err = %v, want ErrBadFragment", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out")
+	}
+}
+
+func TestCheckOrigin(t *testing.T) {
+	cases := []struct {
+		origin, host string
+		allowed      []string
+		want         bool
+	}{
+		{"", "dash:8080", nil, true},                               // not a browser
+		{"http://dash:8080", "dash:8080", nil, true},               // same origin
+		{"https://DASH:8080", "dash:8080", nil, true},              // host compare is case-insensitive
+		{"https://evil.example", "dash:8080", nil, false},          // cross-site hijack
+		{"https://evil.example", "dash:8080", []string{"*"}, true}, // explicitly opened up
+		{"https://ops.example", "dash:8080", []string{"https://ops.example/"}, true},
+		{"null", "dash:8080", nil, false}, // sandboxed iframe / file://
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest("GET", "http://"+c.host+"/stream", nil)
+		r.Host = c.host
+		if c.origin != "" {
+			r.Header.Set("Origin", c.origin)
+		}
+		if got := CheckOrigin(r, c.allowed); got != c.want {
+			t.Errorf("origin=%q host=%q allowed=%v: got %v, want %v", c.origin, c.host, c.allowed, got, c.want)
+		}
 	}
 }
